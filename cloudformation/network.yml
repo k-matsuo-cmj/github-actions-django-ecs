@@ -78,6 +78,27 @@ Resources:
       SubnetId: !Ref PublicSubnetA
       RouteTableId: !Ref RouteTable  
 
+  # ------------------------------------------------------------#
+  #  Security Group
+  # ------------------------------------------------------------#
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH from Internet
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} SecurityGroup"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+
 Outputs:
   VPC1:
     Value: !Ref MyVPC
