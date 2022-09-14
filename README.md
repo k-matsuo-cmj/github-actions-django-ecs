@@ -15,3 +15,15 @@
     ```
     aws cloudformation delete-stack --stack-name matsuo-stack
     ```
+
+## Dockerfile
+- Dockerイメージビルド
+    ```
+    cd github-actions-django-ecs
+    docker build -t djangoimage .
+    docker images
+    ```
+- Dockerコンテナ起動
+    ```
+    docker run --rm -p 8080:8080 djangoimage
+    ```
