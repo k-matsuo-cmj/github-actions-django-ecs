@@ -1,4 +1,5 @@
 # GitHub Actions CI/CD  
+https://zenn.dev/soshimiyamoto/articles/d435cb4cba6102
 
 ## AWS CloudFormation
 - テンプレート検証
@@ -26,4 +27,14 @@
 - Dockerコンテナ起動
     ```
     docker run --rm -p 8080:8080 djangoimage
+    ```
+
+## Docker Compose
+- 起動
+    ```
+    docker-compose up -d
+    ```
+- 停止
+    ```
+    docker-compose down
     ```
