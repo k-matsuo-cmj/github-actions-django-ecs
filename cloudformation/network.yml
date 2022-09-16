@@ -5,6 +5,12 @@ Parameters:
   MyEnvName:
     Type: String
     Default: "Matsuo0914"
+  AppName:
+    Type: String
+    Default: "django"
+  ECSContainerImage:
+    Type: String
+    Default: 458247080796.dkr.ecr.ap-southeast-1.amazonaws.com/matsuo0914-django_app
 
 Resources: 
 
@@ -38,7 +44,7 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
 
   # ------------------------------------------------------------#
-  #  Route Table
+  #  Route Table (Public)
   # ------------------------------------------------------------#
   RouteTable:
     Type: AWS::EC2::RouteTable
@@ -57,7 +63,7 @@ Resources:
       GatewayId: !Ref InternetGateway
   
   # ------------------------------------------------------------#
-  #  Public Sunbet A
+  #  Public Subnet A
   # ------------------------------------------------------------#
   PublicSubnetA:
     Type: AWS::EC2::Subnet
@@ -72,68 +78,350 @@ Resources:
       Tags:
       - Key: Name
         Value: !Sub "${MyEnvName} PublicSubnetA"
-  PublicRouteTableAssociation:
+  PublicSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicSubnetA
       RouteTableId: !Ref RouteTable  
 
   # ------------------------------------------------------------#
-  #  Security Group
+  #  Public Subnet C
   # ------------------------------------------------------------#
-  MySecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    DependsOn: AttachGateway
     Properties:
-      GroupDescription: Allow SSH from Internet
+      AvailabilityZone: !Select 
+        - 2
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: 10.9.2.0/24
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref MyVPC
+      Tags:
+      - Key: Name
+        Value: !Sub "${MyEnvName} PublicSubnetC"
+  PublicSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref RouteTable  
+
+  # ------------------------------------------------------------#
+  #  NAT Gateway A
+  # ------------------------------------------------------------#
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      AllocationId: !GetAtt EIPForNatGatewayA.AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} NatGatewayA"
+
+  EIPForNatGatewayA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  
+  # ------------------------------------------------------------#
+  #  NAT Gateway C
+  # ------------------------------------------------------------#
+  NatGatewayC:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      AllocationId: !GetAtt EIPForNatGatewayC.AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} NatGatewayC"
+
+  EIPForNatGatewayC:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  
+  # ------------------------------------------------------------#
+  #  Private Subnet A Route Table
+  # ------------------------------------------------------------#
+  PrivateSubnetARouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn:
+      - NatGatewayA
+    Properties:
       VpcId: !Ref MyVPC
       Tags:
         - Key: Name
-          Value: !Sub "${MyEnvName} SecurityGroup"
+          Value: !Sub "${MyEnvName} PrivateSubnetARouteTable"
+
+  PrivateSubnetARoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetARouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  # ------------------------------------------------------------#
+  #  Private Subnet C Route Table
+  # ------------------------------------------------------------#
+  PrivateSubnetCRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn:
+      - NatGatewayC
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} PrivateSubnetCRouteTable"
+
+  PrivateSubnetCRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnetCRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayC
+
+  # ------------------------------------------------------------#
+  #  Private Subnet A
+  # ------------------------------------------------------------#
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select 
+        - 0
+        - Fn::GetAZs: !Ref AWS::Region 
+      CidrBlock: 10.9.3.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} PrivateSubnetA"
+  
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetARouteTable
+      SubnetId: !Ref PrivateSubnetA
+  
+  # ------------------------------------------------------------#
+  #  Private Subnet C
+  # ------------------------------------------------------------#
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select 
+        - 2
+        - Fn::GetAZs: !Ref AWS::Region 
+      CidrBlock: 10.9.4.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} PrivateSubnetC"
+  
+  PrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetCRouteTable
+      SubnetId: !Ref PrivateSubnetC
+  
+  # ------------------------------------------------------------#
+  #  ALB Security Group
+  # ------------------------------------------------------------#
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP from Internet
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName} ALBSecurityGroup"
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
+          FromPort: 80
+          ToPort: 80
           CidrIp: 0.0.0.0/0
 
   # ------------------------------------------------------------#
-  #  EC2 Instance
+  #  ECS Security Group
   # ------------------------------------------------------------#
-  WebServer:
-    Type: AWS::EC2::Instance
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      ImageId: ami-0b89f7b3f054b957e
-      InstanceType: t2.micro
-      KeyName: CMITS2207-KeyPair
-      SubnetId: !Ref PublicSubnetA
-      SecurityGroupIds:
-        - !Ref MySecurityGroup
+      GroupDescription: Allow HTTP from ALB
+      VpcId: !Ref MyVPC
       Tags:
         - Key: Name
-          Value: !Sub "${MyEnvName} WebServer"
-      UserData:
-        Fn::Base64: |
-          #!/bin/bash
-          sudo yum update -y && \
-          sudo yum install git -y && \
-          sudo amazon-linux-extras install  -y docker && \
-          sudo usermod -a -G docker ec2-user && \
-          sudo systemctl start docker.service && \
-          sudo systemctl status docker.service && \
-          sudo systemctl enable docker.service && \
-          sudo curl -L https://github.com/docker/compose/releases/download/v2.10.2/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose && \
-          sudo chmod +x /usr/local/bin/docker-compose && \
-          sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+          Value: !Sub "${MyEnvName} ECSSecurityGroup"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  # ------------------------------------------------------------#
+  #  ECS Task Execution Role
+  # ------------------------------------------------------------#
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${MyEnvName}-ECSTaskExecutionRole"
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ------------------------------------------------------------#
+  #  ECS Cluster
+  # ------------------------------------------------------------#
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${MyEnvName}-${AppName}-cluster"
+  
+  # ------------------------------------------------------------#
+  #  ECS TaskDefinition
+  # ------------------------------------------------------------#
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Cpu: 256
+      ExecutionRoleArn: !Sub "${MyEnvName}-ECSTaskExecutionRole"
+      Family: !Join ['', [!Ref 'AWS::StackName', -django-app]]
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: !Sub "${MyEnvName}-${AppName}-container"
+          Cpu: 128
+          Essential: true
+          Image: !Ref ECSContainerImage
+          Memory: 128
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogsGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: django-app
+          PortMappings:
+            - HostPort: 80
+              Protocol: tcp
+              ContainerPort: 80
+  
+  # ------------------------------------------------------------#
+  #  ECS Service
+  # ------------------------------------------------------------#
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ALBListner
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerPort: 80
+          ContainerName: !Sub "${MyEnvName}-${AppName}-container"
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetC
+      ServiceName: !Sub "${MyEnvName}-${AppName}-service"
+      TaskDefinition: !Ref ECSTaskDefinition
+  
+  # ------------------------------------------------------------#
+  #  ALB
+  # ------------------------------------------------------------#
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${MyEnvName}-ALB"
+      Scheme: "internet-facing"
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetC
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName}-ALB"
+
+  # ------------------------------------------------------------#
+  #  Target Group
+  # ------------------------------------------------------------#
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${MyEnvName}-TargetGroup"
+      VpcId: !Ref MyVPC
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      Tags:
+        - Key: Name
+          Value: !Sub "${MyEnvName}-TargetGroup"
+  
+  # ------------------------------------------------------------#
+  #  ALB Listner
+  # ------------------------------------------------------------#
+  ALBListner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Port: 80
+      Protocol: HTTP
+  
+  # ------------------------------------------------------------#
+  #  CloudWatch Log Group
+  # ------------------------------------------------------------#
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['-', [ECSLogGroup, !Ref 'AWS::StackName']]
+      RetentionInDays: 14
 
 Outputs:
   VPC1:
     Value: !Ref MyVPC
     Export: 
       Name: !Sub "${MyEnvName}-VPCName"
-  SubnetA:
+  PublicSubnetA:
     Value: !Ref PublicSubnetA
     Export:
-      Name: !Sub "${MyEnvName}-SubnetName"
+      Name: !Sub "${MyEnvName}-PublicSubnetA"
+  PublicSubnetC:
+    Value: !Ref PublicSubnetC
+    Export:
+      Name: !Sub "${MyEnvName}-PublicSubnetC"
+  PrivateSubnetA:
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub "${MyEnvName}-PrivateSubnetA"
+  PrivateSubnetC:
+    Value: !Ref PrivateSubnetC
+    Export:
+      Name: !Sub "${MyEnvName}-PrivateSubnetC"
+  ALBSecurityGroup:
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub "${MyEnvName}-ALBSecurityGroup"
+  ECSSecurityGroup:
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub "${MyEnvName}-ECSSecurityGroup"
+  ECSTaskExecutionRole:
+    Value: !Ref ECSTaskExecutionRole
+    Export:
+      Name: !Sub "${MyEnvName}-ECSTaskExecutionRole"

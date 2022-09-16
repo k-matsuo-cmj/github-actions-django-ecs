@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create ECR
+
+Parameters:
+  MyEnvName:
+    Type: String
+    Default: "matsuo0914"
+
+Resources:
+  ECR:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${MyEnvName}-django_app"
